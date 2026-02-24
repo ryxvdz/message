@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: SpringCloudKafka
+
+
+  cloud:
+    function:
+      definition: testConsumer
+    stream:
+      bindings:
+        topic:
+          destination: my-topic
+        testConsumer-in-0:
+          destination: my-topic
+          group: spring-group
+
+
+expose port: 6767
