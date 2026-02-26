@@ -1,18 +1,48 @@
+server:
+  port: 8081
+
 spring:
   application:
-    name: SpringCloudKafka
+    name: fraud-detection-service
 
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
 
   cloud:
     function:
-      definition: testConsumer
+      definition: fraudTransactionConsumer
     stream:
       bindings:
-        topic:
-          destination: my-topic
-        testConsumer-in-0:
-          destination: my-topic
-          group: spring-group
+        transacao-topic:
+          destination: transacao-topic
+        fraudTransactionConsumer-in-0:
+          destination: transacao-topic
+          group: fraud-detection-group
+        fraude-detectada-topic:
+          destination: fraude-detectada-topic
 
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  info:
+    title: Sistema de Detecção de Fraude em Transações
+    description: API REST para detecção de fraude em tempo real usando Kafka e Redis
+    version: 1.0.0
+    contact:
+      name: Fraud Detection Team
+      email: suporte@frauddetection.com
 
-expose port: 6767
+fraud:
+  detection:
+    max-amount: 10000.0
+    time-window-minutes: 5
+    max-transactions-per-window: 3
+    velocity-check-minutes: 10
+
