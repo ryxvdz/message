@@ -15,14 +15,11 @@ public class RedisConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        // Use RedisSerializer.json() which uses default ObjectMapper with JavaTimeModule
         RedisSerializer<Object> serializer = RedisSerializer.json();
 
-        // Set key serializer
         template.setKeySerializer(new StringRedisSerializer());
         template.setHashKeySerializer(new StringRedisSerializer());
 
-        // Set value serializer
         template.setValueSerializer(serializer);
         template.setHashValueSerializer(serializer);
 

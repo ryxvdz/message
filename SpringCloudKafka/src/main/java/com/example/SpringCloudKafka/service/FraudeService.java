@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -18,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 public class FraudeService {
 
     private static final Logger logger = LoggerFactory.getLogger(FraudeService.class);
-
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Value("${fraud.detection.max-amount:10000.0}")
@@ -41,16 +42,14 @@ public class FraudeService {
         ResultadoFraude resultado = new ResultadoFraude(transacao, false, 0.0);
         double scoreRisco = 0.0;
 
-        logger.info("Analisando transação: {}", transacao.getId());
-
         if (isValorSuspeito(transacao.getValor())) {
             scoreRisco += 30.0;
-            resultado.adicionarMotivo("Valor acima do limite suspeito: " + transacao.getValor());
+            resultado.adicionarMotivo("Valor acima do limite");
         }
 
         if (isVelocidadeSuspeita(transacao.getContaId())) {
             scoreRisco += 40.0;
-            resultado.adicionarMotivo("Múltiplas transações em curto período de tempo");
+            resultado.adicionarMotivo("Múltiplas transações em curto período");
         }
 
         if (isTransacaoDuplicada(transacao)) {
@@ -60,21 +59,17 @@ public class FraudeService {
 
         if (isMudancaGeograficaSuspeita(transacao.getContaId(), transacao.getLocalizacao())) {
             scoreRisco += 35.0;
-            resultado.adicionarMotivo("Mudança geográfica suspeita detectada");
+            resultado.adicionarMotivo("Mudança geográfica suspeita");
         }
 
         if (isHorarioSuspeito(transacao.getDataHora())) {
             scoreRisco += 15.0;
-            resultado.adicionarMotivo("Transação em horário incomum");
+            resultado.adicionarMotivo("Horário incomum");
         }
 
         resultado.setScoreRisco(scoreRisco);
         resultado.setFraude(scoreRisco >= 50.0);
-
         registrarTransacao(transacao);
-
-        logger.info("Resultado da análise - ID: {}, Fraude: {}, Score: {}",
-                   transacao.getId(), resultado.isFraude(), resultado.getScoreRisco());
 
         return resultado;
     }
@@ -84,29 +79,17 @@ public class FraudeService {
     }
 
     private boolean isVelocidadeSuspeita(String contaId) {
-        String key = "transacao:conta:" + contaId;
-        Long count = redisTemplate.opsForList().size(key);
+        String key = "transacao:conta:zset:" + contaId;
+        long currentTime = System.currentTimeMillis();
+        long windowStart = currentTime - TimeUnit.MINUTES.toMillis(janelaTempo);
 
-        if (count != null && count >= maximoTransacoesPeriodo) {
-            logger.warn("Velocidade suspeita detectada para conta: {} - {} transações", contaId, count);
-            return true;
-        }
-        return false;
+        Long count = redisTemplate.opsForZSet().count(key, windowStart, currentTime);
+        return count != null && count >= maximoTransacoesPeriodo;
     }
 
     private boolean isTransacaoDuplicada(Transacao transacao) {
-        String key = "transacao:duplicata:" + transacao.getCartaoId() + ":" +
-                     transacao.getValor() + ":" + transacao.getComerciante();
-
-        Boolean exists = redisTemplate.hasKey(key);
-
-        if (Boolean.TRUE.equals(exists)) {
-            logger.warn("Transação duplicada detectada: {}", key);
-            return true;
-        }
-
-        redisTemplate.opsForValue().set(key, transacao.getId(), janelaTempo, TimeUnit.MINUTES);
-        return false;
+        String key = "transacao:duplicata:" + transacao.getCartaoId() + ":" + transacao.getValor() + ":" + transacao.getComerciante();
+        return Boolean.FALSE.equals(redisTemplate.opsForValue().setIfAbsent(key, transacao.getId(), janelaTempo, TimeUnit.MINUTES));
     }
 
     private boolean isMudancaGeograficaSuspeita(String contaId, String novaLocalizacao) {
@@ -114,69 +97,62 @@ public class FraudeService {
         String ultimaLocalizacao = (String) redisTemplate.opsForValue().get(key);
 
         if (ultimaLocalizacao != null && !ultimaLocalizacao.equals(novaLocalizacao)) {
-            String timestampKey = "transacao:localizacao:timestamp:" + contaId;
-            Long timestamp = (Long) redisTemplate.opsForValue().get(timestampKey);
-
-            if (timestamp != null) {
-                long minutosDesdeUltimaTransacao = (System.currentTimeMillis() - timestamp) / (1000 * 60);
-                if (minutosDesdeUltimaTransacao < velocidadeChecagem) {
-                    logger.warn("Mudança geográfica rápida: {} -> {} em {} minutos",
-                               ultimaLocalizacao, novaLocalizacao, minutosDesdeUltimaTransacao);
-                    return true;
-                }
+            Long timestamp = (Long) redisTemplate.opsForValue().get("transacao:localizacao:timestamp:" + contaId);
+            if (timestamp != null && (System.currentTimeMillis() - timestamp) / (1000 * 60) < velocidadeChecagem) {
+                return true;
             }
         }
 
         redisTemplate.opsForValue().set(key, novaLocalizacao, 1, TimeUnit.HOURS);
-        redisTemplate.opsForValue().set("transacao:localizacao:timestamp:" + contaId,
-                                       System.currentTimeMillis(), 1, TimeUnit.HOURS);
+        redisTemplate.opsForValue().set("transacao:localizacao:timestamp:" + contaId, System.currentTimeMillis(), 1, TimeUnit.HOURS);
         return false;
     }
 
     private boolean isHorarioSuspeito(LocalDateTime dataHora) {
         int hora = dataHora.getHour();
-        return hora >= 2 && hora <= 5; // Entre 2h e 5h da manhã
+        return hora >= 2 && hora <= 5;
     }
 
     private void registrarTransacao(Transacao transacao) {
-        String key = "transacao:conta:" + transacao.getContaId();
+        String key = "transacao:conta:zset:" + transacao.getContaId();
+        long currentTime = System.currentTimeMillis();
 
-        redisTemplate.opsForList().leftPush(key, transacao);
-
+        redisTemplate.opsForZSet().add(key, transacao, currentTime);
+        redisTemplate.opsForZSet().removeRangeByScore(key, 0, currentTime - TimeUnit.MINUTES.toMillis(janelaTempo));
         redisTemplate.expire(key, janelaTempo, TimeUnit.MINUTES);
-
-        String transacaoKey = "transacao:id:" + transacao.getId();
-        redisTemplate.opsForValue().set(transacaoKey, transacao, 24, TimeUnit.HOURS);
     }
 
     public List<Object> buscarTransacoesConta(String contaId) {
-        String key = "transacao:conta:" + contaId;
-        return redisTemplate.opsForList().range(key, 0, -1);
+        Set<Object> transacoes = redisTemplate.opsForZSet().reverseRange("transacao:conta:zset:" + contaId, 0, -1);
+        return transacoes != null ? new ArrayList<>(transacoes) : new ArrayList<>();
     }
 
-    public void bloquearConta(String contaId, String motivo) {
-        String key = "conta:bloqueada:" + contaId;
-        redisTemplate.opsForValue().set(key, motivo, 24, TimeUnit.HOURS);
-        logger.warn("Conta bloqueada: {} - Motivo: {}", contaId, motivo);
+    public Map<String, String> bloquearConta(String contaId, String motivo) {
+        redisTemplate.opsForValue().set("conta:bloqueada:" + contaId, motivo, 24, TimeUnit.HOURS);
+        return Map.of("status", "BLOQUEADA", "contaId", contaId, "motivo", motivo);
     }
 
     public boolean isContaBloqueada(String contaId) {
-        String key = "conta:bloqueada:" + contaId;
-        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+        return Boolean.TRUE.equals(redisTemplate.hasKey("conta:bloqueada:" + contaId));
     }
 
-    public void desbloquearConta(String contaId) {
-        String key = "conta:bloqueada:" + contaId;
-        redisTemplate.delete(key);
-        logger.info("Conta desbloqueada: {}", contaId);
+    public Map<String, String> desbloquearConta(String contaId) {
+        redisTemplate.delete("conta:bloqueada:" + contaId);
+        return Map.of("status", "DESBLOQUEADA", "contaId", contaId);
     }
 
-    public void limparCacheConta(String contaId) {
-        Set<String> keys = redisTemplate.keys("*:" + contaId + ":*");
-        if (keys != null && !keys.isEmpty()) {
-            redisTemplate.delete(keys);
-        }
-        redisTemplate.delete("transacao:conta:" + contaId);
-        logger.info("Cache limpo para conta: {}", contaId);
+    public Map<String, Object> verificarStatusConta(String contaId) {
+        boolean bloqueada = isContaBloqueada(contaId);
+        return Map.of("contaId", contaId, "bloqueada", bloqueada, "status", bloqueada ? "BLOQUEADA" : "ATIVA");
+    }
+
+    public Map<String, String> limparCacheConta(String contaId) {
+        redisTemplate.delete(List.of(
+                "transacao:conta:zset:" + contaId,
+                "transacao:localizacao:" + contaId,
+                "transacao:localizacao:timestamp:" + contaId,
+                "conta:bloqueada:" + contaId
+        ));
+        return Map.of("status", "CACHE_LIMPO", "contaId", contaId);
     }
 }
