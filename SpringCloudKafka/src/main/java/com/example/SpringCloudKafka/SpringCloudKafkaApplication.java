@@ -14,11 +14,4 @@ public class SpringCloudKafkaApplication {
 		SpringApplication.run(SpringCloudKafkaApplication.class, args);
 	}
 
-	@Bean
-	public ObjectMapper objectMapper() {
-		ObjectMapper mapper = new ObjectMapper();
-		mapper.registerModule(new JavaTimeModule());
-		mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-		return mapper;
-	}
 }
