@@ -1,0 +1,34 @@
+# POST JSON -> criar transação (body JSON)
+POST http://localhost:8081/api/fraude/transacao
+
+
+
+Body (raw JSON):
+{
+  "contaId": "conta-123",
+  "cartaoId": "cartao-abc",
+  "valor": 150.75,
+  "comerciante": "Loja Exemplo",
+  "localizacao": "São Paulo"
+}
+
+# POST com query params -> transacao simples
+POST "http://localhost:8081/api/fraude/transacao/simples?contaId=conta-123&cartaoId=cartao-abc&valor=150.75&comerciante=Loja+Exemplo&localizacao=Brasil"
+
+# GET transacoes por conta
+GET http://localhost:8081/api/fraude/transacoes/conta-123
+
+# POST bloquear conta (motivo opcional via query param)
+POST "http://localhost:8081/api/fraude/conta/conta-123/bloquear?motivo=Bloqueio%20manual"
+
+# POST desbloquear conta
+POST http://localhost:8081/api/fraude/conta/conta-123/desbloquear
+
+# GET status da conta
+GET http://localhost:8081/api/fraude/conta/conta-123/status
+
+# DELETE limpar cache da conta
+DELETE http://localhost:8081/api/fraude/conta/conta-123/cache
+
+# GET health
+GET http://localhost:8081/api/fraude/health

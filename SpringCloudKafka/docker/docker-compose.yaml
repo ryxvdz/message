@@ -21,24 +21,44 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - kafka-network
+
+
   kafka-ui:
     container_name: kafka-ui
     image: provectuslabs/kafka-ui:latest
     ports:
       - 8080:8080
     environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
       DYNAMIC_CONFIG_ENABLED: 'true'
+    depends_on:
+      - broker
+    networks:
+      - kafka-network
   #    volumes:
   #      - ~/kui/config.yml:/etc/kafkaui/dynamic_config.yaml
+
 
   redis:
     container_name: redis
     image: redis
     ports:
       - 6379:6379
+    networks:
+      - kafka-network
 
   redis-insight:
     container_name: redis-insight
     image: redis/redisinsight:latest
     ports:
       - 5540:5540
+    networks:
+      - kafka-network
+
+
+networks:
+  kafka-network:
+    driver: bridge

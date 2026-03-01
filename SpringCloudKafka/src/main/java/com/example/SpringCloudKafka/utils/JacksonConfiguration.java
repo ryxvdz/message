@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class ObjectMapper {
+public class JacksonConfiguration {
 
     @Bean
     public com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
