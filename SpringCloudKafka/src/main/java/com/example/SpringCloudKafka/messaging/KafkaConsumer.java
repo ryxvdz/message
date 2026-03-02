@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 @Configuration
@@ -29,10 +30,18 @@ public class KafkaConsumer {
 
     @Bean
     public Consumer<Message<String>> fraudTransactionConsumer() {
+        AtomicInteger counter = new AtomicInteger(0);
+
         return message -> {
+            int count = counter.incrementAndGet();
             try {
                 String payload = message.getPayload();
                 logger.info("Transação recebida para análise: {}", payload);
+
+                if (count % 10 == 0) {
+                    logger.error("Enviando para DLQ: {}", payload);
+                    throw new IllegalArgumentException("Forçando DLQ - Mensagem: "+ count);
+                }
 
                 Transacao transacao = objectMapper.readValue(payload, Transacao.class);
 
@@ -58,6 +67,7 @@ public class KafkaConsumer {
 
             } catch (Exception e) {
                 logger.error("Erro ao processar transação: {}", e.getMessage(), e);
+                throw new RuntimeException("Falha forçada na mensagem! Enviado para DLQ", e);
             }
         };
     }
