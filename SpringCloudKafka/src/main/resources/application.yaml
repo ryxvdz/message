@@ -21,6 +21,8 @@ spring:
         fraudTransactionConsumer-in-0:
           destination: transacao-topic
           group: fraud-detection-group
+          consumer:
+            max-attempts: 1
         fraude-detectada-topic:
           destination: fraude-detectada-topic
 
